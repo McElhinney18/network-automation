@@ -1,0 +1,44 @@
+---
+- name: Configure multiple interfaces with the same access VLAN on IOS/IOS-XE
+  hosts: ios
+  gather_facts: no
+  collections:
+    - cisco.ios
+    - ansible.netcommon
+
+  vars:
+    target_vlan_id: 10
+    target_vlan_name: Corp_Data
+    access_interfaces:
+      - GigabitEthernet0/1
+      - GigabitEthernet0/2
+      - GigabitEthernet0/3
+
+  tasks:
+    - name: Ensure VLAN exists
+      ios_vlans:
+        config:
+          - vlan_id: "{{ target_vlan_id }}"
+            name: "{{ target_vlan_name }}"
+        state: merged
+
+    - name: Set interfaces as access ports in VLAN {{ target_vlan_id }}
+      ios_l2_interfaces:
+        config: >
+          {{
+            access_interfaces | map('community.general.dict_kv', 'name') | list
+            | map('combine', {'mode': 'access', 'access': {'vlan': target_vlan_id}}) | list
+          }}
+        state: merged
+
+    - name: Verify (show run excerpt)
+      ios_command:
+        commands:
+          - show run | section ^interface GigabitEthernet0/1
+          - show run | section ^interface GigabitEthernet0/2
+          - show run | section ^interface GigabitEthernet0/3
+          - show vlan brief | include \b{{ target_vlan_id }}\b
+      register: verify_out
+
+    - debug:
+        var: verify_out.stdout_lines
